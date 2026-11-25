@@ -145,8 +145,10 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
       if (!active.current) return;
       setPhase("connected");
       await sleep(300);
-      const spokenGreeting = greetingUrl || isRtl(greeting) || langRef.current !== "ur-PK" ? greeting
-        : `السلام علیکم! ${businessName} میں خوش آمدید۔ آپ کیسے ہیں؟ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟`;
+      // A phone greeting is short and warm, like a real shop salesman (the long chat greeting is for reading).
+      const spokenGreeting = greetingUrl ? greeting : langRef.current === "ur-PK"
+        ? `السلام علیکم! ${businessName} میں خوش آمدید۔ آپ کیسے ہیں؟ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟`
+        : `Hello, and welcome to ${businessName}! How are you? How can I help you today?`;
       await say(spokenGreeting, greetingUrl);
       if (!active.current) return;
       if (err) { setProblem(micProblem(err)); setActivity("muted"); return; }

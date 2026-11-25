@@ -137,6 +137,7 @@ export function hasVoiceFor(lang: CallLang): boolean {
 }
 
 /** Speak text sentence by sentence (short pieces sound more human and avoid browser cut-offs). */
+const live: SpeechSynthesisUtterance[] = [];
 export function speak(text: string, lang: CallLang, rate = 1, pitch = 1): { promise: Promise<void>; stop: () => void } {
   if (!voiceSupport.speak) return { promise: Promise.resolve(), stop: () => {} };
   const synth = window.speechSynthesis;
@@ -148,13 +149,22 @@ export function speak(text: string, lang: CallLang, rate = 1, pitch = 1): { prom
   const promise = new Promise<void>((resolve) => {
     if (!voice || !parts.length) { resolve(); return; }
     let i = 0;
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
     const next = () => {
-      if (cancelled || i >= parts.length) { resolve(); return; }
-      const u = new SpeechSynthesisUtterance(parts[i++]);
+      clearTimeout(watchdog);
+      if (cancelled || i >= parts.length) { live.length = 0; resolve(); return; }
+      const text = parts[i++];
+      const u = new SpeechSynthesisUtterance(text);
+      live.push(u); // Chrome bug: an utterance that is garbage-collected never fires "end" — keep a reference
       u.voice = voice; u.lang = voice.lang; u.rate = rate; u.pitch = isFemale(voice) ? Math.max(0.1, pitch * 0.75) : pitch;
-      u.onend = () => setTimeout(next, 120); // a small breath between sentences
-      u.onerror = () => next();
+      let done = false;
+      const finish = () => { if (done) return; done = true; setTimeout(next, 120); }; // a small breath between sentences
+      u.onend = finish;
+      u.onerror = finish;
+      // Chrome sometimes never reports the end of speech: move on after a generous time anyway.
+      watchdog = setTimeout(() => { if (!done) { synth.cancel(); finish(); } }, 2500 + text.length * 110 / Math.max(0.5, rate));
       synth.speak(u);
+      if (synth.paused) synth.resume();
     };
     synth.cancel();
     next();
