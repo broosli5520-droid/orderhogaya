@@ -13,7 +13,7 @@ interface PublicBusiness { name: string; slug: string; bot_name: string; bot_gre
   voice?: { enabled: boolean; rate: number; pitch: number; premium?: boolean; clips: Record<string, string> }; }
 interface ChatMsg { role: "user" | "assistant" | "agent"; content: string; }
 interface PlacedOrder { order_number: number; total: string; items: string[]; }
-const DEFAULT_QUICK = ["Product list", "Place an order", "Order status", "Talk to a person"];
+const DEFAULT_QUICK = ["لسٹ دکھائیں", "آرڈر دینا ہے", "میرا آرڈر کہاں ہے؟", "بات کرنی ہے"];
 
 function store(key: string, value?: string | null): string | null {
   try {

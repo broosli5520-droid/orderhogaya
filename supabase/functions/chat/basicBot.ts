@@ -22,7 +22,19 @@ type Tool = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
 const URDU_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 const normDigits = (s: string) => s.replace(/[۰-۹]/g, (d) => String(URDU_DIGITS.indexOf(d)));
-const isUrdu = (s: string) => (s.match(/[؀-ۿ]/g) ?? []).length > (s.match(/[A-Za-z]/g) ?? []).length;
+// Roman Urdu ("kese ho", "lawn suit chahiye", "kitne ka hai") is answered in Urdu too.
+const ROMAN_URDU = new Set(["hai", "hain", "hy", "ho", "hon", "kya", "kia", "kese", "kaise", "kesy", "kaisa", "kaisi", "mujhe", "mjhe", "muje", "chahiye", "chahie", "chaiye", "kitne", "kitna", "kitni",
+  "ka", "ki", "ke", "ko", "se", "mein", "main", "yar", "yaar", "karo", "kar", "kardo", "nahi", "nahin", "haan", "han", "ji", "jee", "aur", "ap", "aap", "apka", "bhai", "salam", "assalam", "aoa", "shukriya", "shukria",
+  "lena", "leni", "dena", "kahan", "kab", "wala", "wali", "kam", "sasta", "bata", "batao", "bataen", "bataein", "theek", "thik", "acha", "accha", "achha", "mil", "milega", "sakta", "sakti", "kuch", "bhi", "abhi", "hum", "tum", "rate", "kitnay", "kaha", "lagao", "bhejo", "bhej", "mangwana", "khareedna"]);
+const isRomanUrdu = (s: string) => { const w = s.toLowerCase().match(/[a-z]+/g) ?? []; const hits = w.filter((x) => ROMAN_URDU.has(x)).length; return hits >= 1 && hits >= w.length * 0.25; };
+const EN_MARK = new Set(["i", "want", "the", "please", "how", "what", "where", "is", "are", "you", "can", "my", "need", "would", "like", "thanks", "thank", "hello", "hi", "yes", "no", "much", "does", "do", "your", "price"]);
+/** Customer's language for this message: Urdu script or Roman Urdu → Urdu; clear English → English; otherwise keep the last one. */
+const langOf = (msg: string, prev?: boolean): boolean => {
+  if (isUrdu(msg)) return true;
+  const w = msg.toLowerCase().match(/[a-z]+/g) ?? [];
+  return w.some((x) => EN_MARK.has(x)) ? false : (prev ?? false);
+};
+const isUrdu = (s: string) => (s.match(/[؀-ۿ]/g) ?? []).length > (s.match(/[A-Za-z]/g) ?? []).length || isRomanUrdu(s);
 const norm = (s: string) => normDigits(s.toLowerCase()).replace(/[^\p{L}\p{N}\s#+]/gu, " ").replace(/\s+/g, " ").trim();
 const tokens = (s: string) => norm(s).split(" ").filter((t) => t.length > 1);
 const has = (text: string, words: string[]) => {
@@ -138,7 +150,7 @@ async function basicReplyInner(input: {
 }): Promise<{ reply: string; state: BotState; voice?: string }> {
   const { message, business: b, products, knowledge, tool } = input;
   // Keep the customer's language even when they only type a number.
-  const ur = /\p{L}/u.test(message) ? isUrdu(message) : !!input.state.ur;
+  const ur = langOf(message, input.state.ur);
   const money = (n: number) => `${b.currency} ${Number(n).toLocaleString("en-US")}`;
   const byId = new Map(products.map((p) => [p.id, p]));
   let s: BotState = { ...input.state };
@@ -289,7 +301,7 @@ async function basicReplyInner(input: {
   if (has(message, W.list)) return { reply: listText() + "\n\n" + t(ur, "Type \"order\" to buy.", "خریدنے کے لیے \"آرڈر\" لکھیں۔"), state: s };
   if (has(message, W.contact)) {
     return { reply: (b.phone ? t(ur, `You can call/WhatsApp us at ${b.phone}.\n`, `ہمیں ${b.phone} پر کال یا واٹس ایپ کریں۔\n`) : "") +
-      t(ur, "Or tell me your name and we will call you back.", "یا اپنا نام بتائیں، ہم آپ کو کال کر لیں گے۔"), state: { flow: "lead", step: "name", interest: "Requested a call back" } };
+      (b.phone ? t(ur, "Or tell me your name and we will call you back.", "یا اپنا نام بتائیں، ہم آپ کو کال کر لیں گے۔") : t(ur, "Please tell me your name and our team will call you back.", "اپنا نام بتائیں، ہماری ٹیم آپ کو کال کر لے گی۔")), state: { flow: "lead", step: "name", interest: "Requested a call back" } };
   }
   if (has(message, W.greet)) return { reply: (/salam|slam|سلام|السلام/i.test(message) ? t(ur, `Wa alaikum assalam! Welcome to ${b.name}. `, `وعلیکم السلام! ${b.name} میں خوش آمدید۔ `) : t(ur, `Hello! Welcome to ${b.name}. `, `السلام علیکم! ${b.name} میں خوش آمدید۔ `)) + "\n\n" + menu, state: s };
   return { reply: t(ur, "Sorry, I didn't fully understand. ", "معذرت، میں پوری بات نہیں سمجھ سکا۔ ") + "\n\n" + menu, state: s, voice: "not_understood" };
@@ -298,6 +310,6 @@ async function basicReplyInner(input: {
 /** Public entry point: remembers the customer's language between turns. */
 export async function basicReply(input: Parameters<typeof basicReplyInner>[0]): Promise<{ reply: string; state: BotState; voice?: string }> {
   const r = await basicReplyInner(input);
-  const ur = /\p{L}/u.test(input.message) ? isUrdu(input.message) : !!input.state.ur;
+  const ur = langOf(input.message, input.state.ur);
   return { reply: r.reply, state: { ...r.state, ur }, voice: r.voice };
 }

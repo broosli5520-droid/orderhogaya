@@ -66,7 +66,15 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
     return () => clearInterval(t);
   }, [phase]);
 
+  /** On a call, read only the first part of a long text menu and ask a short question instead — like a real salesman. */
+  function forCall(text: string): string {
+    const cut = text.search(/\n\n(میں ان کاموں میں|I can help you with)/);
+    if (cut > 0) return text.slice(0, cut).trim() + (isRtl(text) ? " بتائیے، آپ کیا لینا چاہیں گے؟" : " What would you like to buy?");
+    return text;
+  }
+
   async function say(text: string, url?: string | null) {
+    text = forCall(text);
     setActivity("speaking"); setCaption(text);
     const replyLang: CallLang = isRtl(text) ? "ur-PK" : "en-US";
     if (!url && premiumSpeak) url = await premiumSpeak(text).catch(() => null);
@@ -137,7 +145,9 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
       if (!active.current) return;
       setPhase("connected");
       await sleep(300);
-      await say(greeting, greetingUrl);
+      const spokenGreeting = greetingUrl || isRtl(greeting) || langRef.current !== "ur-PK" ? greeting
+        : `السلام علیکم! ${businessName} میں خوش آمدید۔ آپ کیسے ہیں؟ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟`;
+      await say(spokenGreeting, greetingUrl);
       if (!active.current) return;
       if (err) { setProblem(micProblem(err)); setActivity("muted"); return; }
       await conversation();
