@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shams Digi Khata — شمس ڈیجی کھاتہ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;700&family=Lato:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#0f172a; --muted:#475569; --brand:#15803d; --brand2:#166534; --bg:#f0fdf4; --card:#ffffff; --line:#d1fae5; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:"Noto Nastaliq Urdu","Lato",serif; line-height:2.1; }
+  .en { font-family:"Lato",sans-serif; direction:ltr; line-height:1.6; }
+  header { background:linear-gradient(135deg,var(--brand),var(--brand2)); color:#fff; padding:40px 16px 56px; text-align:center; }
+  header h1 { margin:0; font-size:2.1rem; }
+  header p { margin:8px auto 0; max-width:640px; opacity:.95; }
+  main { max-width:880px; margin:-32px auto 40px; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:24px; box-shadow:0 8px 24px rgba(21,128,61,.08); margin-bottom:20px; }
+  .btn { display:inline-block; background:var(--brand); color:#fff; text-decoration:none; padding:12px 26px; border-radius:12px; font-weight:700; font-size:1.05rem; }
+  .btn.alt { background:#fff; color:var(--brand); border:2px solid var(--brand); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:14px; }
+  .f { background:#f8fafc; border-radius:12px; padding:14px 16px; }
+  .f b { color:var(--brand2); }
+  ol { padding-inline-start:22px; margin:0; }
+  .center { text-align:center; }
+  footer { text-align:center; color:var(--muted); padding:24px 16px; }
+  a.small { color:var(--brand2); }
+</style>
+</head>
+<body>
+<header>
+  <h1>شمس ڈیجی کھاتہ</h1>
+  <p>دکان کا ادھار، کیش بک اور اسٹاک — سب ایک Excel فائل میں۔ موبائل اور کمپیوٹر دونوں پر چلتا ہے۔</p>
+  <p class="en">Shams Digi Khata — a simple digital ledger for shopkeepers (Excel / Google Sheets).</p>
+</header>
+<main>
+  <div class="card center">
+    <a class="btn" href="Shams-Digi-Khata.xlsx" download>⬇ کھاتہ ڈاؤن لوڈ کریں</a>
+    &nbsp;
+    <a class="btn alt" href="/bill-book/">🧾 بل بک کھولیں</a>
+    <p class="en" style="color:var(--muted);margin-top:12px">Opens in Microsoft Excel, WPS Office or Google Sheets (free on Android).</p>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">اس میں کیا ہے؟</h2>
+    <div class="grid">
+      <div class="f"><b>گاہک اور ادھار کھاتہ</b><br>ہر گاہک کا ادھار، وصولی اور باقی رقم خود حساب ہو جاتی ہے۔</div>
+      <div class="f"><b>کیش بک</b><br>روز کی آمدن اور خرچ لکھیں، گلے کا حساب ہر وقت سامنے۔</div>
+      <div class="f"><b>اسٹاک</b><br>کون سا مال کتنا بچا ہے، کم ہو تو پتہ چل جائے۔</div>
+      <div class="f"><b>ڈیش بورڈ</b><br>کل ادھار، کیش اور اسٹاک کا خلاصہ ایک نظر میں۔</div>
+    </div>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">موبائل پر کیسے چلائیں؟</h2>
+    <ol>
+      <li>اوپر "کھاتہ ڈاؤن لوڈ کریں" دبائیں۔</li>
+      <li>فائل کو <span class="en">Google Sheets</span> یا <span class="en">WPS Office</span> (مفت ایپ) میں کھولیں۔</li>
+      <li>صرف سفید خانوں میں لکھیں — باقی حساب خود ہو جائے گا۔</li>
+    </ol>
+  </div>
+  <div class="card center">
+    <p style="margin:0">آن لائن آرڈر لینے والا سیلز بوٹ بھی چاہیے؟</p>
+    <a class="small" href="/">OrderHogaya — AI سیلز ایجنٹ دیکھیں ←</a>
+  </div>
+</main>
+<footer class="en">© Shams Digital Tools</footer>
+</body>
+</html>

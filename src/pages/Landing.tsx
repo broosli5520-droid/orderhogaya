@@ -81,6 +81,19 @@ export default function Landing() {
           </div>
         </section>
       )}
+      <section className="pb-12">
+        <h2 className="text-center text-2xl font-bold">Free tools for shopkeepers · <span className="urdu-aware">دکانداروں کے مفت ٹولز</span></h2>
+        <div className="mx-auto mt-6 grid max-w-3xl gap-4 px-4 sm:grid-cols-2">
+          <a href="/digi-khata/" className="rounded-xl border border-slate-200 bg-white p-5 hover:border-emerald-500">
+            <div className="font-semibold">📒 Shams Digi Khata</div>
+            <p className="mt-1 text-sm text-slate-600">Udhaar, cash book and stock in one Excel file.</p>
+          </a>
+          <a href="/bill-book/" className="rounded-xl border border-slate-200 bg-white p-5 hover:border-emerald-500">
+            <div className="font-semibold">🧾 Shams Bill Book</div>
+            <p className="mt-1 text-sm text-slate-600">Make and print customer bills in Urdu or English — right in the browser.</p>
+          </a>
+        </div>
+      </section>
       <footer className="py-8 text-center text-sm text-slate-500">© {new Date().getFullYear()} {BRAND.name}</footer>
     </div>
   );
