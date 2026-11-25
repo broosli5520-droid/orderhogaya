@@ -17,6 +17,8 @@ export type BotState = {
   items?: { id: string; qty: number }[];
   name?: string; phone?: string; address?: string; interest?: string; number?: number;
   ur?: boolean; // last language used by the customer
+  who?: { name?: string; phone?: string; address?: string }; // remembered for the whole chat
+  lastOrder?: number; // last order number placed in this chat
 };
 type Tool = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
@@ -46,11 +48,12 @@ const W = {
   greet: ["hi", "hello", "hey", "salam", "assalam", "aoa", "slam", "السلام", "سلام", "ہیلو", "ہائے"],
   order: ["order", "buy", "purchase", "khareed", "kharid", "khareedna", "mangwana", "mangwa", "book", "آرڈر", "خرید", "خریدنا", "منگوانا", "منگوا", "بک"],
   status: ["status", "track", "tracking", "kahan", "where is my", "ٹریک", "اسٹیٹس", "سٹیٹس", "کہاں"],
-  list: ["products", "product", "items", "list", "menu", "catalog", "catalogue", "rates", "price list", "kya kya", "services", "لسٹ", "چیزیں", "ریٹ", "مینو", "پروڈکٹ", "سروس"],
-  contact: ["call", "contact", "number", "phone", "whatsapp", "baat", "callback", "person", "human", "agent", "team", "رابطہ", "فون", "نمبر", "کال", "بات"],
+  list: ["products", "product", "items", "list", "menu", "catalog", "catalogue", "rates", "price list", "kya kya", "services", "kya kuch", "kia kuch", "kuch hai", "kya milta", "kya milega", "kya bechte", "what do you have", "what do you sell", "کیا کچھ", "کیا ملتا", "کیا ملے گا", "کیا بیچتے", "لسٹ", "چیزیں", "ریٹ", "مینو", "پروڈکٹ", "سروس"],
+  contact: ["call", "bat", "baat", "rabta", "rabita", "contact", "number", "phone", "whatsapp", "baat", "callback", "person", "human", "agent", "team", "رابطہ", "فون", "نمبر", "کال", "بات"],
   yes: ["yes", "y", "ok", "okay", "haan", "han", "ha", "ji", "jee", "g", "confirm", "theek", "thik", "done", "ہاں", "جی", "ٹھیک", "کنفرم", "اوکے"],
   no: ["no", "nahi", "nahin", "na", "cancel", "stop", "chhoro", "rehne", "نہیں", "کینسل", "بس", "رہنے"],
   more: ["aur", "more", "add", "another", "اور", "مزید"],
+  already: ["abhi to", "de diya", "de dia", "dia he", "diya hai", "dia hai", "bata diya", "bata dia", "btaya", "bataya", "already", "pehle", "upar", "دے دیا", "دیا ہے", "بتا دیا", "بتایا", "پہلے", "اوپر", "ابھی تو"],
   howru: ["kese ho", "kaise ho", "kesy ho", "kaisay ho", "kese hain", "kaise hain", "kia haal", "kya haal", "how are you", "how r u", "کیسے ہو", "کیسے ہیں", "کیا حال", "حال کیسا"],
   thanks: ["thanks", "thank you", "thx", "shukriya", "shukria", "jazakallah", "شکریہ", "جزاک اللہ", "مہربانی"],
   bargain: ["kam karo", "kam kar", "kam kardo", "kam kr", "discount", "sasta", "sasti", "less price", "final price", "last price", "rate kam", "price kam", "kuch kam", "کم کرو", "کم کر", "کم کریں", "ڈسکاؤنٹ", "رعایت", "سستا", "سستی", "آخری قیمت", "فائنل"],
@@ -197,6 +200,24 @@ async function basicReplyInner(input: {
     if (st) { const r = s.flow ? resume() : ""; return { reply: st + (r ? "\n\n" + r : (s.flow ? "" : "\n\n" + t(ur, "How can I help you today?", "بتائیں، میں آپ کی کیا مدد کروں؟"))), state: s }; }
   }
 
+  const who = input.state.who ?? {};
+  // "Talk to your team": use what the customer already told us instead of asking again.
+  const callBack = async (interest: string): Promise<{ reply: string; state: BotState; voice?: string }> => {
+    if (who.name && who.phone) {
+      const r = await tool("save_lead", { name: who.name, phone: who.phone, interest }) as { ok?: boolean };
+      if (r?.ok) return { reply: t(ur, `Sure ${who.name}! Our team will call you on ${who.phone} soon.`, `جی ${who.name} صاحب! ہماری ٹیم جلد آپ کو ${who.phone} پر کال کرے گی۔`) + (b.phone ? t(ur, `\nYou can also call/WhatsApp us at ${b.phone}.`, `\nآپ ہمیں ${b.phone} پر کال یا واٹس ایپ بھی کر سکتے ہیں۔`) : ""), state: {}, voice: "lead_thanks" };
+    }
+    const head = b.phone ? t(ur, `You can call/WhatsApp us at ${b.phone}.\n`, `ہمیں ${b.phone} پر کال یا واٹس ایپ کریں۔\n`) : "";
+    if (who.name) return { reply: head + t(ur, `${who.name}, your phone number please? Our team will call you.`, `${who.name} صاحب، آپ کا فون نمبر؟ ہماری ٹیم آپ کو کال کرے گی۔`), state: { flow: "lead", step: "phone", name: who.name, interest } };
+    return { reply: head + (b.phone ? t(ur, "Or tell me your name and we will call you back.", "یا اپنا نام بتائیں، ہم آپ کو کال کر لیں گے۔") : t(ur, "Please tell me your name and our team will call you back.", "اپنا نام بتائیں، ہماری ٹیم آپ کو کال کر لے گی۔")), state: { flow: "lead", step: "name", interest } };
+  };
+  if (s.flow && s.flow !== "lead" && (s.step === "items" || s.step === "confirm" || (s.step === "name" && tokens(message).length >= 2)) && has(message, W.contact) && !phoneOk(message)) {
+    const pending = s;
+    const cb = await callBack(s.items?.length ? "Wants to talk before ordering: " + (s.items ?? []).map((i) => `${i.qty} × ${byId.get(i.id)?.name ?? ""}`).join(", ") : "Requested a call back");
+    if (!cb.state.flow) return { ...cb, reply: cb.reply + (pending.items?.length ? "\n\n" + t(ur, "Your order is not placed yet — reply \"yes\" when you want to confirm it.", "آپ کا آرڈر ابھی کنفرم نہیں ہوا — جب کنفرم کرنا ہو تو \"جی\" لکھ دیں۔") : ""), state: pending };
+    return cb;
+  }
+
   // Cancel any running flow
   if (s.flow && has(message, W.no) && tokens(message).length <= 3) {
     return { reply: t(ur, "No problem, cancelled. ", "ٹھیک ہے، کینسل کر دیا۔ ") + "\n\n" + menu, state: {} };
@@ -227,8 +248,9 @@ async function basicReplyInner(input: {
       return { reply: t(ur, `Thanks ${s.name}. Your phone number please?`, `شکریہ ${s.name}۔ آپ کا فون نمبر؟`), state: s, voice: "ask_phone" };
     }
     if (s.step === "phone") {
-      if (!phoneOk(message)) return { reply: t(ur, "Please send a valid phone number (e.g. 03001234567).", "براہِ کرم درست فون نمبر لکھیں (جیسے 03001234567)۔"), state: s };
-      s.phone = cleanPhone(message); s.step = "address";
+      if (!phoneOk(message) && !(who.phone && has(message, W.already))) return { reply: t(ur, "Please send a valid phone number (e.g. 03001234567).", "براہِ کرم درست فون نمبر لکھیں (جیسے 03001234567)۔"), state: s };
+      s.phone = phoneOk(message) ? cleanPhone(message) : who.phone; s.step = s.address ? "confirm" : "address";
+      if (s.step === "confirm") return { reply: confirmText(), state: s };
       return { reply: askAddress(), state: s, voice: "ask_address" };
     }
     if (s.step === "address") {
@@ -243,37 +265,51 @@ async function basicReplyInner(input: {
         items: (s.items ?? []).map((i) => ({ product_id: i.id, quantity: i.qty })),
       }) as { ok?: boolean; order_number?: number; total?: string; error?: string };
       if (!r?.ok) return { reply: t(ur, "Sorry, the order could not be placed: ", "معذرت، آرڈر نہیں ہو سکا: ") + (r?.error ?? "") + (b.phone ? `\n${t(ur, "Call us", "ہمیں کال کریں")}: ${b.phone}` : ""), state: {} };
-      return { reply: t(ur, `✅ Order #${r.order_number} placed! Total: ${r.total}. Our team will contact you shortly.`, `✅ آپ کا آرڈر نمبر ${r.order_number} ہو گیا! کل رقم: ${r.total}۔ ہماری ٹیم جلد رابطہ کرے گی۔`), state: {} };
+      return { reply: t(ur, `✅ Order #${r.order_number} placed! Total: ${r.total}. Our team will contact you shortly.`, `✅ آپ کا آرڈر نمبر ${r.order_number} ہو گیا! کل رقم: ${r.total}۔ ہماری ٹیم جلد رابطہ کرے گی۔`), state: { lastOrder: r.order_number } };
     }
   }
 
   if (s.flow === "lead") {
     if (s.step === "name") { s.name = message.trim().slice(0, 120); s.step = "phone"; return { reply: t(ur, "Your phone number please?", "آپ کا فون نمبر؟"), state: s, voice: "ask_phone" }; }
     if (s.step === "phone") {
-      if (!phoneOk(message)) return { reply: t(ur, "Please send a valid phone number.", "براہِ کرم درست فون نمبر لکھیں۔"), state: s };
-      const r = await tool("save_lead", { name: s.name, phone: cleanPhone(message), interest: s.interest || "Requested a call back" }) as { ok?: boolean };
+      if (!phoneOk(message) && !(who.phone && has(message, W.already))) return { reply: t(ur, "Please send a valid phone number.", "براہِ کرم درست فون نمبر لکھیں۔"), state: s };
+      s.phone = phoneOk(message) ? cleanPhone(message) : who.phone;
+      const r = await tool("save_lead", { name: s.name, phone: s.phone, interest: s.interest || "Requested a call back" }) as { ok?: boolean };
       return r?.ok ? { reply: t(ur, "Thank you! Our team will call you soon.", "شکریہ! ہماری ٹیم جلد آپ کو کال کرے گی۔"), state: {}, voice: "lead_thanks" }
         : { reply: t(ur, "Sorry, please try again.", "معذرت، دوبارہ کوشش کریں۔"), state: {} };
     }
   }
 
   if (s.flow === "status") {
-    if (s.step === "number") {
+    if (s.step === "number" && parseItems(message, products).length) s = {}; // they are ordering, not tracking
+    else if (s.step === "number") {
       const m = normDigits(message).match(/\d+/);
       if (!m) return { reply: t(ur, "Please type your order number.", "اپنا آرڈر نمبر لکھیں۔"), state: s };
-      s.number = Number(m[0]); s.step = "phone";
+      s.number = Number(m[0]);
+      if (who.phone) {
+        const r = await tool("check_order_status", { order_number: s.number, phone: who.phone }) as { ok?: boolean; status?: string; total?: string };
+        if (r?.ok) return { reply: t(ur, `Order #${s.number}: ${r.status} (total ${r.total}).`, `آرڈر نمبر ${s.number}: ${r.status} (کل ${r.total})۔`), state: {} };
+      }
+      s.step = "phone";
       return { reply: t(ur, "And the phone number used for the order?", "آرڈر والا فون نمبر؟"), state: s };
     }
     if (s.step === "phone") {
-      const r = await tool("check_order_status", { order_number: s.number, phone: cleanPhone(message) }) as { ok?: boolean; status?: string; total?: string; placed_on?: string; error?: string };
-      return { reply: r?.ok ? t(ur, `Order #${s.number}: ${r.status} (total ${r.total}, placed ${r.placed_on}).`, `آرڈر نمبر ${s.number}: ${r.status} (کل ${r.total}، تاریخ ${r.placed_on})۔`) : t(ur, "No order found with that number and phone.", "اس نمبر اور فون سے کوئی آرڈر نہیں ملا۔"), state: {} };
+      if (!phoneOk(message) && !who.phone) return { reply: t(ur, "Please type the phone number used for the order (e.g. 03001234567).", "آرڈر والا فون نمبر لکھیں (جیسے 03001234567)۔"), state: s };
+      const ph = phoneOk(message) ? cleanPhone(message) : who.phone!;
+      const r = await tool("check_order_status", { order_number: s.number, phone: ph }) as { ok?: boolean; status?: string; total?: string; placed_on?: string; error?: string };
+      return { reply: r?.ok ? t(ur, `Order #${s.number}: ${r.status} (total ${r.total}${r.placed_on ? `, placed ${r.placed_on}` : ""}).`, `آرڈر نمبر ${s.number}: ${r.status} (کل ${r.total}${r.placed_on ? `، تاریخ ${r.placed_on}` : ""})۔`) : t(ur, "No order found with that number and phone.", "اس نمبر اور فون سے کوئی آرڈر نہیں ملا۔"), state: {} };
     }
   }
 
   // ------------------------------------------------ new intents
-  s = {};
+  const lastOrder = input.state.lastOrder;
+  s = lastOrder ? { lastOrder } : {};
   if (has(message, W.status)) {
     const m = normDigits(message).match(/#?\s*(\d{1,7})\b/);
+    if (!m && lastOrder && who.phone) {
+      const r = await tool("check_order_status", { order_number: lastOrder, phone: who.phone }) as { ok?: boolean; status?: string; total?: string; placed_on?: string };
+      if (r?.ok) return { reply: t(ur, `Your order #${lastOrder}: ${r.status} (total ${r.total}).`, `آپ کا آرڈر نمبر ${lastOrder}: ${r.status} (کل ${r.total})۔`), state: s };
+    }
     if (m && !phoneOk(m[1])) return { reply: t(ur, "Phone number used for the order?", "آرڈر والا فون نمبر؟"), state: { flow: "status", step: "phone", number: Number(m[1]) } };
     return { reply: t(ur, "Please type your order number.", "اپنا آرڈر نمبر لکھیں۔"), state: { flow: "status", step: "number" } };
   }
@@ -281,9 +317,13 @@ async function basicReplyInner(input: {
     const items = parseItems(message, products);
     if (items.length) {
       const c = cartText(items);
-      return { reply: c.text + "\n\n" + t(ur, "What is your name?", "آپ کا نام کیا ہے؟"), state: { flow: "order", step: "name", items }, voice: "ask_name" };
+      const o: BotState = { ...s, flow: "order", items, name: who.name, phone: who.phone, address: who.address };
+      o.step = o.name ? (o.phone ? (o.address ? "confirm" : "address") : "phone") : "name";
+      if (o.step === "confirm") { s = o; return { reply: confirmText(), state: o }; }
+      const ask = o.step === "address" ? askAddress() : o.step === "phone" ? t(ur, `${o.name}, your phone number please?`, `${o.name} صاحب، آپ کا فون نمبر؟`) : t(ur, "What is your name?", "آپ کا نام کیا ہے؟");
+      return { reply: c.text + "\n\n" + ask, state: o, voice: o.step === "name" ? "ask_name" : o.step === "phone" ? "ask_phone" : "ask_address" };
     }
-    return { reply: t(ur, "Great! Which items and how many? e.g. \"2 ", "بہت اچھا! کون سی چیزیں اور کتنی؟ جیسے \"2 ") + (products[0]?.name ?? "item") + "\"\n\n" + listText(), state: { flow: "order", step: "items" } };
+    return { reply: t(ur, "Great! Which items and how many? e.g. \"2 ", "بہت اچھا! کون سی چیزیں اور کتنی؟ جیسے \"2 ") + (products[0]?.name ?? "item") + "\"\n\n" + listText(), state: { ...s, flow: "order", step: "items", name: who.name, phone: who.phone, address: who.address } };
   }
   const kb = bestKnowledge(message, knowledge);
   const product = matchProduct(message, products);
@@ -299,11 +339,14 @@ async function basicReplyInner(input: {
   }
   if (kb) return { reply: kb.answer, state: s, voice: kb.id ? `kb:${kb.id}` : undefined };
   if (has(message, W.list)) return { reply: listText() + "\n\n" + t(ur, "Type \"order\" to buy.", "خریدنے کے لیے \"آرڈر\" لکھیں۔"), state: s };
-  if (has(message, W.contact)) {
-    return { reply: (b.phone ? t(ur, `You can call/WhatsApp us at ${b.phone}.\n`, `ہمیں ${b.phone} پر کال یا واٹس ایپ کریں۔\n`) : "") +
-      (b.phone ? t(ur, "Or tell me your name and we will call you back.", "یا اپنا نام بتائیں، ہم آپ کو کال کر لیں گے۔") : t(ur, "Please tell me your name and our team will call you back.", "اپنا نام بتائیں، ہماری ٹیم آپ کو کال کر لے گی۔")), state: { flow: "lead", step: "name", interest: "Requested a call back" } };
-  }
+  if (has(message, W.contact)) return callBack("Requested a call back");
   if (has(message, W.greet)) return { reply: (/salam|slam|سلام|السلام/i.test(message) ? t(ur, `Wa alaikum assalam! Welcome to ${b.name}. `, `وعلیکم السلام! ${b.name} میں خوش آمدید۔ `) : t(ur, `Hello! Welcome to ${b.name}. `, `السلام علیکم! ${b.name} میں خوش آمدید۔ `)) + "\n\n" + menu, state: s };
+  // Not understood: answer like a salesman — show what we sell instead of a robotic menu.
+  if (products.length) {
+    const top = products.slice(0, 6).map((p) => `• ${p.name} — ${money(priceOf(p))}`).join("\n");
+    return { reply: t(ur, "Sorry, I didn't quite get that. Here is what we have:\n", "معاف کیجیے، بات پوری سمجھ نہیں آئی۔ ہمارے پاس یہ چیزیں ہیں:\n") + top +
+      "\n\n" + t(ur, "Type an item's name for details, \"order\" to buy, or \"talk\" to speak with our team.", "کسی چیز کا نام لکھیں، خریدنے کے لیے \"آرڈر\" لکھیں، یا ٹیم سے بات کے لیے \"بات کرنی ہے\" لکھیں۔"), state: s, voice: "not_understood" };
+  }
   return { reply: t(ur, "Sorry, I didn't fully understand. ", "معذرت، میں پوری بات نہیں سمجھ سکا۔ ") + "\n\n" + menu, state: s, voice: "not_understood" };
 }
 
@@ -311,5 +354,8 @@ async function basicReplyInner(input: {
 export async function basicReply(input: Parameters<typeof basicReplyInner>[0]): Promise<{ reply: string; state: BotState; voice?: string }> {
   const r = await basicReplyInner(input);
   const ur = langOf(input.message, input.state.ur);
-  return { reply: r.reply, state: { ...r.state, ur }, voice: r.voice };
+  const pick = (x: BotState) => ({ ...(x.name ? { name: x.name } : {}), ...(x.phone ? { phone: x.phone } : {}), ...(x.address ? { address: x.address } : {}) });
+  const who = { ...(input.state.who ?? {}), ...pick(input.state), ...pick(r.state) };
+  const lastOrder = r.state.lastOrder ?? input.state.lastOrder;
+  return { reply: r.reply, state: { ...r.state, ur, who, ...(lastOrder ? { lastOrder } : {}) }, voice: r.voice };
 }
