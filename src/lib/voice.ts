@@ -34,6 +34,7 @@ export function listenOnce(lang: CallLang, onInterim?: (t: string) => void): { p
     };
     rec.onerror = (e: any) => {
       if (e.error === "no-speech" || e.error === "aborted") resolve("");
+      // "audio-capture" = no microphone, "not-allowed" = permission blocked, "network" = speech service unreachable
       else reject(new Error(e.error || "speech-error"));
     };
     rec.onend = () => resolve(finalText.trim());
@@ -56,13 +57,23 @@ export function speakable(text: string): string {
     .trim();
 }
 
+const MALE = /\b(male|asad|salman|madhur|prabhat|guy|ryan|christopher|eric|andrew|brian|roger|steffan|david|mark|george|daniel|james|thomas|alex|fred|rishi|aaron|arthur|davis|tony|jason)\b/i;
+const FEMALE = /\b(female|uzma|zira|aria|jenny|sonia|libby|samantha|karen|susan|hazel|heera|swara|neerja|victoria|moira|tessa|fiona|catherine|emma|ava|michelle|natasha|clara)\b/i;
+
+/** Picks a natural-sounding MALE voice when the device has one (a shop salesman's voice). */
 function pickVoice(lang: CallLang): SpeechSynthesisVoice | null {
   const voices = window.speechSynthesis.getVoices();
   const base = lang.slice(0, 2);
   const same = voices.filter((v) => v.lang.toLowerCase().startsWith(base));
-  // Prefer natural/online voices (they sound far more human), then local ones.
-  return same.find((v) => /natural|online|neural|google/i.test(v.name)) ?? same[0] ?? null;
+  const natural = (v: SpeechSynthesisVoice) => /natural|online|neural/i.test(v.name);
+  return same.find((v) => MALE.test(v.name) && natural(v))
+    ?? same.find((v) => MALE.test(v.name))
+    ?? same.find((v) => !FEMALE.test(v.name) && natural(v))
+    ?? same.find((v) => !FEMALE.test(v.name))
+    ?? same.find(natural) ?? same[0] ?? null;
 }
+/** True when only a female voice exists, so the pitch is lowered to sound closer to a man. */
+function isFemale(v: SpeechSynthesisVoice) { return FEMALE.test(v.name) || (/google/i.test(v.name) && !MALE.test(v.name)); }
 
 /** True when the device has a voice for that language (Urdu voices are missing on some devices). */
 export function hasVoiceFor(lang: CallLang): boolean {
@@ -82,7 +93,7 @@ export function speak(text: string, lang: CallLang, rate = 1, pitch = 1): { prom
     const next = () => {
       if (cancelled || i >= parts.length) { resolve(); return; }
       const u = new SpeechSynthesisUtterance(parts[i++]);
-      u.voice = voice; u.lang = voice.lang; u.rate = rate; u.pitch = pitch;
+      u.voice = voice; u.lang = voice.lang; u.rate = rate; u.pitch = isFemale(voice) ? Math.max(0.1, pitch * 0.75) : pitch;
       u.onend = () => setTimeout(next, 120); // a small breath between sentences
       u.onerror = () => next();
       synth.speak(u);
@@ -109,5 +120,18 @@ export function warmUpVoices(): void {
   if (voiceSupport.speak) {
     window.speechSynthesis.getVoices();
     window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+  }
+}
+
+/** Ask for the microphone up front so the browser shows its permission prompt. Returns an error code or null. */
+export async function checkMic(): Promise<string | null> {
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) return "not-supported";
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach((t) => t.stop());
+    return null;
+  } catch (e) {
+    const n = (e as { name?: string })?.name ?? "";
+    return n === "NotAllowedError" || n === "SecurityError" ? "not-allowed" : n === "NotFoundError" || n === "OverconstrainedError" ? "audio-capture" : "audio-capture";
   }
 }

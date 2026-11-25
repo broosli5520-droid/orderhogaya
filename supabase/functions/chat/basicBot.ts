@@ -39,8 +39,45 @@ const W = {
   yes: ["yes", "y", "ok", "okay", "haan", "han", "ha", "ji", "jee", "g", "confirm", "theek", "thik", "done", "ہاں", "جی", "ٹھیک", "کنفرم", "اوکے"],
   no: ["no", "nahi", "nahin", "na", "cancel", "stop", "chhoro", "rehne", "نہیں", "کینسل", "بس", "رہنے"],
   more: ["aur", "more", "add", "another", "اور", "مزید"],
+  howru: ["kese ho", "kaise ho", "kesy ho", "kaisay ho", "kese hain", "kaise hain", "kia haal", "kya haal", "how are you", "how r u", "کیسے ہو", "کیسے ہیں", "کیا حال", "حال کیسا"],
+  thanks: ["thanks", "thank you", "thx", "shukriya", "shukria", "jazakallah", "شکریہ", "جزاک اللہ", "مہربانی"],
+  bargain: ["kam karo", "kam kar", "kam kardo", "kam kr", "discount", "sasta", "sasti", "less price", "final price", "last price", "rate kam", "price kam", "kuch kam", "کم کرو", "کم کر", "کم کریں", "ڈسکاؤنٹ", "رعایت", "سستا", "سستی", "آخری قیمت", "فائنل"],
 };
-const STOP = new Set(["the", "and", "for", "with", "price", "rate", "kitne", "kitna", "ka", "ki", "ke", "hai", "hain", "kya", "of", "is", "what", "how", "much", "me", "mein", "do", "de", "dein", "chahiye", "کا", "کی", "کے", "ہے", "ہیں", "کیا", "میں", "قیمت", "کتنے", "کتنا", "چاہیے"]);
+const STOP = new Set(["the", "and", "for", "with", "price", "rate", "kitne", "kitna", "ka", "ki", "ke", "hai", "hain", "kya", "of", "is", "what", "how", "much", "me", "mein", "do", "de", "dein", "chahiye", "کا", "کی", "کے", "ہے", "ہیں", "کیا", "میں", "قیمت", "کتنے", "کتنا", "چاہیے",
+  // everyday Urdu / Roman-Urdu filler words (so "lawn suit mil sakta hai?" only matches on "lawn suit")
+  "chahie", "chaiye", "chahye", "lena", "leni", "lene", "dena", "deni", "mil", "mile", "milega", "milegi", "milta", "milti", "sakta", "sakti", "sakte", "ga", "gi", "ge", "hy", "he", "mujhe", "mjhe", "muje", "ap", "aap", "apka", "apke", "wala", "wali", "wale", "koi", "bhi", "hay", "please", "plz", "want", "need", "available", "have", "you", "do", "can", "get",
+  "چاہئے", "لینا", "لینی", "لینے", "دینا", "مل", "ملے", "ملے", "ملےگا", "ملیگا", "ملے گا", "ملتا", "ملتی", "سکتا", "سکتی", "سکتے", "گا", "گی", "گے", "مجھے", "آپ", "اپ", "والا", "والی", "والے", "کوئی", "بھی", "ہو", "ہوں", "دستیاب", "ریٹ", "دام"]);
+
+// ---------------------------------------------------------------- sound-alike matching
+// Customers type the same word in Urdu script or Roman Urdu ("لان سوٹ" / "lawn suit" / "lan soot").
+// Both are reduced to a consonant "skeleton" so they can match each other without any AI.
+const UR_SOUND: Record<string, string> = {
+  "ب": "b", "پ": "p", "ت": "t", "ٹ": "t", "ط": "t", "ة": "t", "ث": "s", "س": "s", "ص": "s", "ش": "s",
+  "ج": "j", "چ": "c", "خ": "k", "ک": "k", "ك": "k", "ق": "k", "گ": "g", "غ": "g", "د": "d", "ڈ": "d", "ض": "z",
+  "ذ": "z", "ز": "z", "ظ": "z", "ژ": "z", "ر": "r", "ڑ": "r", "ف": "f", "ل": "l", "م": "m", "ن": "n", "ں": "n",
+};
+function skeleton(word: string): string {
+  let out = "";
+  if (/[؀-ۿ]/.test(word)) {
+    for (const ch of word) { const c = UR_SOUND[ch]; if (c) out += c; } // vowels/و/ی/ہ/ع/ا are dropped
+  } else {
+    const w = word.toLowerCase()
+      .replace(/sh/g, "s").replace(/ch/g, "c").replace(/kh/g, "k").replace(/gh/g, "g").replace(/ph/g, "f").replace(/th/g, "t")
+      .replace(/q/g, "k").replace(/c(?!$)(?=[eiy])/g, "s").replace(/x/g, "ks").replace(/v/g, "");
+    for (const ch of w) if (/[bcdfgjklmnprstz]/.test(ch)) out += ch;
+  }
+  return out.replace(/(.)\1+/g, "$1"); // "ss" → "s"
+}
+/** Do two words sound alike? (exact, prefix, or same skeleton) */
+function alike(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length > 3 && b.length > 3 && (a.startsWith(b) || b.startsWith(a))) return true;
+  const sa = skeleton(a), sb = skeleton(b);
+  return sa.length >= 2 && sa === sb;
+}
+
+/** Same word, or the same word written in the other script (لان ↔ lawn). */
+const sameWord = (a: string, b: string) => a === b || (/[؀-ۿ]/.test(a) !== /[؀-ۿ]/.test(b) && skeleton(a).length >= 2 && skeleton(a) === skeleton(b));
 
 function t(ur: boolean, en: string, urdu: string) { return ur ? urdu : en; }
 
@@ -54,7 +91,7 @@ function matchProduct(text: string, products: BotProduct[]): BotProduct | null {
     if (!name) continue;
     let score = n.includes(` ${name} `) ? 10 : 0;
     const pw = tokens(p.name).filter((w) => !STOP.has(w));
-    const hits = pw.filter((w) => words.has(w) || [...words].some((x) => x.length > 3 && (x.startsWith(w) || w.startsWith(x)))).length;
+    const hits = pw.filter((w) => words.has(w) || [...words].some((x) => alike(x, w))).length;
     if (pw.length && hits) score = Math.max(score, (hits / pw.length) * 5 + hits);
     if (p.sku && words.has(p.sku.toLowerCase())) score = Math.max(score, 9);
     if (score > bestScore) { best = p; bestScore = score; }
@@ -84,7 +121,7 @@ function bestKnowledge(text: string, kb: { id?: string; question: string; answer
   for (const k of kb) {
     const qw = tokens(k.question).filter((w) => !STOP.has(w));
     const aw = new Set(tokens(k.answer));
-    const near = (w: string) => words.has(w) || [...words].some((x) => x.length > 2 && w.length > 2 && (x.startsWith(w) || w.startsWith(x)));
+    const near = (w: string) => words.has(w) || [...words].some((x) => x.length > 2 && w.length > 2 && alike(x, w));
     const qHits = qw.filter(near).length;
     const aHits = [...words].filter((w) => aw.has(w)).length;
     const score = (qw.length ? qHits / qw.length : 0) * 2 + qHits + aHits * 0.3;
@@ -127,6 +164,27 @@ async function basicReplyInner(input: {
   const phoneOk = (p: string) => p.replace(/\D/g, "").length >= 10;
   const cleanPhone = (p: string) => normDigits(p).replace(/[^\d+]/g, "");
 
+  // Friendly small talk — answered at any point, and a running order continues afterwards.
+  const smallTalk = (): string | null => {
+    if (s.flow && has(message, W.greet) && tokens(message).length <= 4) return /salam|slam|سلام|السلام/i.test(message) ? t(ur, "Wa alaikum assalam!", "وعلیکم السلام!") : t(ur, "Hello!", "جی، سلام!");
+    if (has(message, W.howru)) return t(ur, "I'm fine, thank you for asking! 😊", "میں ٹھیک ہوں، پوچھنے کا شکریہ! 😊");
+    if (has(message, W.bargain)) return t(ur, "Our prices are already the best we can offer" + (products.some((p) => p.sale_price != null && p.sale_price < p.price) ? " — sale prices are already applied." : ".") + " For a bigger (bulk) order our team can talk to you — type \"call\".",
+      "ہماری قیمتیں پہلے ہی بہترین ہیں" + (products.some((p) => p.sale_price != null && p.sale_price < p.price) ? "، سیل والی قیمت لگی ہوئی ہے۔" : "۔") + " زیادہ مقدار (ہول سیل) کے لیے ہماری ٹیم بات کر سکتی ہے — \"کال\" لکھیں۔");
+    if (has(message, W.thanks) && tokens(message).length <= 4) return t(ur, "You're welcome! 🌸", "آپ کا بہت شکریہ! 🌸");
+    return null;
+  };
+  const resume = () => {
+    if (s.flow === "order" && s.step === "items") return t(ur, "Which item and how many would you like?", "کون سی چیز اور کتنی چاہیے؟");
+    if (s.step === "name") return t(ur, "What is your name?", "آپ کا نام کیا ہے؟");
+    if (s.step === "phone") return t(ur, "Your phone number please?", "آپ کا فون نمبر؟");
+    if (s.step === "confirm") return t(ur, "Shall I place the order? Reply \"yes\".", "کیا آرڈر کر دوں؟ \"جی\" لکھیں۔");
+    return "";
+  };
+  if (s.step !== "address" && s.step !== "number") {
+    const st = smallTalk();
+    if (st) { const r = s.flow ? resume() : ""; return { reply: st + (r ? "\n\n" + r : (s.flow ? "" : "\n\n" + t(ur, "How can I help you today?", "بتائیں، میں آپ کی کیا مدد کروں؟"))), state: s }; }
+  }
+
   // Cancel any running flow
   if (s.flow && has(message, W.no) && tokens(message).length <= 3) {
     return { reply: t(ur, "No problem, cancelled. ", "ٹھیک ہے، کینسل کر دیا۔ ") + "\n\n" + menu, state: {} };
@@ -136,6 +194,10 @@ async function basicReplyInner(input: {
   if (s.flow === "order") {
     if (s.step === "items") {
       const items = parseItems(message, products);
+      if (!items.length) {
+        const k = bestKnowledge(message, knowledge);
+        if (k) return { reply: k.answer + "\n\n" + t(ur, "Which item and how many would you like?", "کون سی چیز اور کتنی چاہیے؟"), state: s, voice: k.id ? `kb:${k.id}` : undefined };
+      }
       if (!items.length) return { reply: t(ur, "I couldn't find that item. Please type the item name and quantity, e.g. \"2 ", "یہ چیز نہیں ملی۔ چیز کا نام اور تعداد لکھیں، جیسے \"2 ") + (products[0]?.name ?? "item") + "\".\n\n" + listText(), state: s };
       const merged = (s.items ?? []).map((m) => ({ ...m }));
       for (const it of items) { const ex = merged.find((m) => m.id === it.id); if (ex) ex.qty += it.qty; else merged.push({ ...it }); }
@@ -213,7 +275,7 @@ async function basicReplyInner(input: {
   }
   const kb = bestKnowledge(message, knowledge);
   const product = matchProduct(message, products);
-  if (product && (!kb || tokens(message).some((w) => tokens(product.name).includes(w)))) {
+  if (product && (!kb || tokens(message).some((w) => tokens(product.name).some((pw) => sameWord(w, pw))))) {
     const sale = product.sale_price != null && product.sale_price < product.price;
     const stock = product.kind === "service" || product.stock == null ? "" : product.stock === 0 ? t(ur, "\nCurrently out of stock.", "\nابھی دستیاب نہیں۔") : t(ur, `\nIn stock: ${product.stock}`, `\nدستیاب: ${product.stock}`);
     return {
@@ -229,7 +291,7 @@ async function basicReplyInner(input: {
     return { reply: (b.phone ? t(ur, `You can call/WhatsApp us at ${b.phone}.\n`, `ہمیں ${b.phone} پر کال یا واٹس ایپ کریں۔\n`) : "") +
       t(ur, "Or tell me your name and we will call you back.", "یا اپنا نام بتائیں، ہم آپ کو کال کر لیں گے۔"), state: { flow: "lead", step: "name", interest: "Requested a call back" } };
   }
-  if (has(message, W.greet)) return { reply: t(ur, `Hello! Welcome to ${b.name}. `, `السلام علیکم! ${b.name} میں خوش آمدید۔ `) + "\n\n" + menu, state: s };
+  if (has(message, W.greet)) return { reply: (/salam|slam|سلام|السلام/i.test(message) ? t(ur, `Wa alaikum assalam! Welcome to ${b.name}. `, `وعلیکم السلام! ${b.name} میں خوش آمدید۔ `) : t(ur, `Hello! Welcome to ${b.name}. `, `السلام علیکم! ${b.name} میں خوش آمدید۔ `)) + "\n\n" + menu, state: s };
   return { reply: t(ur, "Sorry, I didn't fully understand. ", "معذرت، میں پوری بات نہیں سمجھ سکا۔ ") + "\n\n" + menu, state: s, voice: "not_understood" };
 }
 

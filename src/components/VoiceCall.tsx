@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, PhoneOff, Volume2 } from "lucide-react";
-import { hasVoiceFor, listenOnce, playUrl, speak, voiceSupport, type CallLang } from "../lib/voice";
+import { Mic, MicOff, PhoneOff, RotateCcw, Volume2 } from "lucide-react";
+import { checkMic, hasVoiceFor, listenOnce, playUrl, speak, voiceSupport, type CallLang } from "../lib/voice";
 import { isRtl } from "../lib/format";
 import { BRAND } from "../lib/brand";
 
@@ -52,6 +52,7 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
   const [caption, setCaption] = useState("");
   const [muted, setMuted] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const looping = useRef(false);
   const active = useRef(true);
   const ended = useRef(false);
   const stopper = useRef<() => void>(() => {});
@@ -83,48 +84,70 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
     setTimeout(onClose, 1800);
   }
 
+  // Clear, Urdu + English help for the usual microphone problems. The call stays open so the customer can fix it and retry.
+  function micProblem(code: string): string {
+    if (code === "not-allowed") return "مائیک کی اجازت بند ہے۔ اوپر ایڈریس بار میں تالے 🔒 کے نشان پر کلک کر کے Microphone کو Allow کریں، پھر \"دوبارہ کوشش\" دبائیں۔\nMicrophone permission is blocked — allow it from the lock icon in the address bar, then tap Try again.";
+    if (code === "audio-capture") return "اس کمپیوٹر پر مائیک نہیں ملا۔ مائیک والا ہیڈفون لگائیں یا موبائل سے کال کریں، پھر \"دوبارہ کوشش\" دبائیں۔\nNo microphone found — plug in a headset with a mic or call from your phone.";
+    if (code === "network") return "آواز پہچاننے کی سروس تک انٹرنیٹ نہیں پہنچ رہا۔ انٹرنیٹ چیک کر کے دوبارہ کوشش کریں۔\nVoice recognition needs internet — check your connection and try again.";
+    return "مائیک شروع نہیں ہو سکا۔ Google Chrome یا Microsoft Edge میں کھول کر دوبارہ کوشش کریں۔\nThe microphone could not start — please use Chrome or Edge and try again.";
+  }
+
   async function conversation() {
-    while (active.current) {
-      if (mutedRef.current) { setActivity("muted"); await sleep(400); continue; }
-      setActivity("listening"); setCaption("");
-      let text = "";
-      try {
-        const l = listenOnce(langRef.current, (t) => setCaption(t)); stopper.current = l.stop;
-        text = await l.promise;
-      } catch (e) {
-        setProblem(e instanceof Error && e.message === "not-allowed"
-          ? "Microphone permission is blocked. Allow the microphone for this site and call again."
-          : "The call lost voice recognition. Check your internet connection and call again.");
-        finish(); return;
+    if (looping.current) return;
+    looping.current = true;
+    try {
+      while (active.current) {
+        if (mutedRef.current) { setActivity("muted"); await sleep(400); continue; }
+        setActivity("listening"); setCaption("");
+        let text = "";
+        try {
+          const l = listenOnce(langRef.current, (t) => setCaption(t)); stopper.current = l.stop;
+          text = await l.promise;
+        } catch (e) {
+          setProblem(micProblem(e instanceof Error ? e.message : ""));
+          setActivity("muted");
+          return; // keep the call open; the customer can press "Try again"
+        }
+        if (!active.current) return;
+        if (!text) continue; // silence — keep listening, like a person waiting
+        setActivity("thinking");
+        const [reply] = await Promise.all([sendRef.current(text), sleep(400 + Math.random() * 400)]); // a natural pause before answering
+        if (!active.current) return;
+        if (!reply) { await say(langRef.current === "ur-PK" ? "معاف کیجیے، آواز صاف نہیں آئی، دوبارہ بتائیں؟" : "Sorry, I didn't catch that. Could you say it again?"); continue; }
+        await say(reply.text, reply.voiceUrl);
+        if (reply.human) { finish(); return; }
       }
-      if (!active.current) return;
-      if (!text) continue; // silence — keep listening, like a person waiting
-      setActivity("thinking");
-      const [reply] = await Promise.all([sendRef.current(text), sleep(400 + Math.random() * 400)]); // a natural pause before answering
-      if (!active.current) return;
-      if (!reply) { await say(langRef.current === "ur-PK" ? "معاف کیجیے، آواز صاف نہیں آئی، دوبارہ بتائیں؟" : "Sorry, I didn't catch that. Could you say it again?"); continue; }
-      await say(reply.text, reply.voiceUrl);
-      if (reply.human) { finish(); return; }
-    }
+    } finally { looping.current = false; }
+  }
+
+  async function retry() {
+    setProblem(null);
+    const err = await checkMic();
+    if (err) { setProblem(micProblem(err)); return; }
+    void conversation();
   }
 
   useEffect(() => {
     active.current = true; ended.current = false;
     try { navigator.vibrate?.([200, 100, 200]); } catch { /* not supported */ }
     (async () => {
+      const micErr = checkMic(); // shows the browser's permission prompt while it rings
       await ringBack();
+      const err = await micErr;
       if (!active.current) return;
       setPhase("connected");
       await sleep(300);
       await say(greeting, greetingUrl);
-      if (active.current) await conversation();
+      if (!active.current) return;
+      if (err) { setProblem(micProblem(err)); setActivity("muted"); return; }
+      await conversation();
     })();
     return () => { active.current = false; stopper.current(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const initials = businessName.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-  const activityText = { speaking: "Speaking", listening: "Listening…", thinking: "…", muted: "You are muted" }[activity];
+  const activityText = problem ? "" : { speaking: "Speaking", listening: "Listening…", thinking: "…", muted: "You are muted" }[activity];
 
   if (!voiceSupport.listen) {
     return (
@@ -161,7 +184,14 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
         </div>
         <div className="mt-1 text-sm text-white/70">{phase === "connected" ? activityText : ""}</div>
         <div className="urdu-aware mt-4 max-h-32 max-w-sm overflow-y-auto text-center text-base text-white/90" dir={isRtl(caption) ? "rtl" : "ltr"}>{caption}</div>
-        {problem && <div className="mt-3 max-w-xs rounded-lg bg-red-500/25 px-3 py-2 text-center text-sm">{problem}</div>}
+        {problem && (
+          <div className="mt-3 flex max-w-sm flex-col items-center gap-3">
+            <div className="urdu-aware whitespace-pre-line rounded-lg bg-red-500/25 px-3 py-2 text-center text-sm">{problem}</div>
+            <button onClick={() => void retry()} className="flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-900">
+              <RotateCcw className="h-4 w-4" /> دوبارہ کوشش · Try again
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex w-full flex-col items-center gap-6">
