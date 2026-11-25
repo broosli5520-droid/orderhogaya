@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-urdu: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", serif;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-slate-50 text-slate-800 antialiased; }
+
+/* Urdu text in chat bubbles gets a Nastaliq face and taller lines */
+.urdu-aware:lang(ur), .urdu-aware [dir="rtl"] { font-family: var(--font-urdu); line-height: 2.2; }

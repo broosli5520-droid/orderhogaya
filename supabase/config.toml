@@ -1,0 +1,14 @@
+# Minimal Supabase CLI config. Run `supabase link --project-ref <ref>` before deploying.
+project_id = "salespilot-ai"
+
+[functions.chat]
+# Website visitors are anonymous, so this function must accept calls without a user JWT.
+verify_jwt = false
+
+[functions.tts]
+# Called from the public call screen by anonymous visitors.
+verify_jwt = false
+
+[functions.byok]
+# Signed-in owners/admins only.
+verify_jwt = false  # the function checks the signed-in user itself (works with new JWT signing keys)
