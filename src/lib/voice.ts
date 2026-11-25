@@ -131,6 +131,13 @@ function pickUrduVoice(): { voice: SpeechSynthesisVoice | null; viaHindi: boolea
   return { voice: hi, viaHindi: !!hi };
 }
 
+/** Which voice a call in this language will use (so the call screen can suggest Edge when only a female voice exists). */
+export function callVoiceInfo(lang: CallLang): { name: string; male: boolean } | null {
+  if (!voiceSupport.speak) return null;
+  const v = lang === "ur-PK" ? pickUrduVoice().voice : pickVoice(lang);
+  return v ? { name: v.name, male: !isFemale(v) && MALE.test(v.name) } : null;
+}
+
 /** True when the device has a voice for that language (Urdu voices are missing on some devices). */
 export function hasVoiceFor(lang: CallLang): boolean {
   return voiceSupport.speak && !!(lang === "ur-PK" ? pickUrduVoice().voice : pickVoice(lang));
@@ -175,12 +182,14 @@ export function speak(text: string, lang: CallLang, rate = 1, pitch = 1): { prom
 /** Play a recorded clip. */
 export function playUrl(url: string): { promise: Promise<void>; stop: () => void } {
   const audio = new Audio(url);
+  let finish = () => {};
   const promise = new Promise<void>((resolve) => {
+    finish = resolve;
     audio.onended = () => resolve();
     audio.onerror = () => resolve();
     audio.play().catch(() => resolve());
   });
-  return { promise, stop: () => { audio.pause(); audio.currentTime = 0; } };
+  return { promise, stop: () => { audio.pause(); audio.currentTime = 0; finish(); } };
 }
 
 /** Voices load asynchronously in Chrome; call once early. */

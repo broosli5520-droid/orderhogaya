@@ -29,36 +29,52 @@ const ROMAN_URDU = new Set(["hai", "hain", "hy", "ho", "hon", "kya", "kia", "kes
   "ka", "ki", "ke", "ko", "se", "mein", "main", "yar", "yaar", "karo", "kar", "kardo", "nahi", "nahin", "haan", "han", "ji", "jee", "aur", "ap", "aap", "apka", "bhai", "salam", "assalam", "aoa", "shukriya", "shukria",
   "lena", "leni", "dena", "kahan", "kab", "wala", "wali", "kam", "sasta", "bata", "batao", "bataen", "bataein", "theek", "thik", "acha", "accha", "achha", "mil", "milega", "sakta", "sakti", "kuch", "bhi", "abhi", "hum", "tum", "rate", "kitnay", "kaha", "lagao", "bhejo", "bhej", "mangwana", "khareedna"]);
 const isRomanUrdu = (s: string) => { const w = s.toLowerCase().match(/[a-z]+/g) ?? []; const hits = w.filter((x) => ROMAN_URDU.has(x)).length; return hits >= 1 && hits >= w.length * 0.25; };
-const EN_MARK = new Set(["i", "want", "the", "please", "how", "what", "where", "is", "are", "you", "can", "my", "need", "would", "like", "thanks", "thank", "hello", "hi", "yes", "no", "much", "does", "do", "your", "price"]);
+const EN_MARK = new Set(["i", "want", "the", "please", "how", "what", "where", "is", "are", "you", "can", "my", "need", "would", "like", "thanks", "thank", "hello", "hi", "yes", "no", "much", "does", "do", "your", "sell", "have", "track", "when", "which", "buy"]);
 /** Customer's language for this message: Urdu script or Roman Urdu → Urdu; clear English → English; otherwise keep the last one. */
 const langOf = (msg: string, prev?: boolean): boolean => {
   if (isUrdu(msg)) return true;
   const w = msg.toLowerCase().match(/[a-z]+/g) ?? [];
-  return w.some((x) => EN_MARK.has(x)) ? false : (prev ?? false);
+  return w.some((x) => EN_MARK.has(x)) ? false : (prev ?? true);
 };
 const isUrdu = (s: string) => (s.match(/[؀-ۿ]/g) ?? []).length > (s.match(/[A-Za-z]/g) ?? []).length || isRomanUrdu(s);
 const norm = (s: string) => normDigits(s.toLowerCase()).replace(/[^\p{L}\p{N}\s#+]/gu, " ").replace(/\s+/g, " ").trim();
 const tokens = (s: string) => norm(s).split(" ").filter((t) => t.length > 1);
+// Roman Urdu has no fixed spelling ("haal"/"hal", "kaise"/"kese"/"kesy", "theek"/"thik").
+// Both the message and the keywords are reduced to one simple spelling before comparing.
+const rn = (s: string) => s.replace(/[a-z]+/g, (w) => w.replace(/(.)\1+/g, "$1").replace(/ai/g, "e").replace(/ay$/, "e").replace(/y$/, "e"));
 const has = (text: string, words: string[]) => {
-  const n = ` ${norm(text)} `;
-  return words.some((w) => n.includes(` ${w} `) || (w.length > 3 && n.includes(w)));
+  const n = ` ${rn(norm(text))} `;
+  return words.some((w0) => { const w = rn(w0); return n.includes(` ${w} `) || (w.length > 3 && n.includes(w)); });
 };
 
 const W = {
   greet: ["hi", "hello", "hey", "salam", "assalam", "aoa", "slam", "السلام", "سلام", "ہیلو", "ہائے"],
   order: ["order", "buy", "purchase", "khareed", "kharid", "khareedna", "mangwana", "mangwa", "book", "آرڈر", "خرید", "خریدنا", "منگوانا", "منگوا", "بک"],
-  status: ["status", "track", "tracking", "kahan", "where is my", "ٹریک", "اسٹیٹس", "سٹیٹس", "کہاں"],
+  status: ["status", "track", "tracking", "where is my", "ٹریک", "اسٹیٹس", "سٹیٹس"],
+  orderWord: ["order", "parcel", "saman", "samaan", "آرڈر", "پارسل", "سامان"],
+  whenWhere: ["kahan", "kab", "kidhar", "pohncha", "pohnchega", "pahuncha", "pohanch", "abhi tak", "کہاں", "کب", "کدھر", "پہنچ", "ابھی تک"],
+  where: ["address", "location", "dukan kahan", "shop kahan", "kahan hai", "kahan he", "kahan par", "kahan pe", "kidhar", "where are you", "where is your shop", "آپ کہاں", "دکان کہاں", "ایڈریس", "لوکیشن", "کہاں ہے", "کدھر"],
+  timing: ["timing", "timings", "time", "kab khul", "kab band", "khulti", "khulta", "band hoti", "open", "close", "hours", "اوقات", "ٹائم", "کب کھل", "کب بند", "کھلتی", "کھلتا"],
+  delivery: ["delivery", "deliver", "courier", "shipping", "ghar tak", "home delivery", "ڈلیوری", "کورئیر", "کوریئر", "گھر تک", "شپنگ"],
+  payment: ["payment", "pay", "jazzcash", "jazz cash", "easypaisa", "easy paisa", "cod", "cash on delivery", "advance", "bank", "account", "پیمنٹ", "ادائیگی", "جاز کیش", "جیز کیش", "ایزی پیسہ", "ایڈوانس", "بینک"],
+  complaint: ["complaint", "shikayat", "kharab", "toota", "tuta", "damaged", "damage", "broken", "return", "wapas", "wapis", "refund", "exchange", "badal", "ghalat", "galat", "wrong", "شکایت", "خراب", "ٹوٹا", "ٹوٹی", "واپس", "ریفنڈ", "تبدیل", "بدل", "غلط"],
+  want: ["chahiye", "chahie", "chaiye", "chahye", "lena", "leni", "lene", "dedo", "de do", "dein", "bhej", "bhejo", "bhejna", "mangwa", "mangwana", "chahta", "chahti", "want", "need", "چاہیے", "چاہئے", "لینا", "لینی", "دے دیں", "دے دو", "بھیج", "منگوا"],
+  bye: ["allah hafiz", "khuda hafiz", "bye", "goodbye", "good bye", "phir milte", "see you", "اللہ حافظ", "خدا حافظ", "بائے"],
+  ack: ["ok", "okay", "acha", "theek", "thik", "hmm", "g", "ji", "je", "fine", "good", "nice", "great", "zabardast", "اچھا", "ٹھیک", "جی", "اوکے", "زبردست"],
+  who: ["bot", "robot", "insan", "insaan", "kaun ho", "kon ho", "who are you", "real person", "are you human", "آپ کون", "روبوٹ", "انسان"],
+  price: ["price", "rate", "qeemat", "qimat", "kitne", "kitna", "kitni", "کتنے", "کتنا", "کتنی", "قیمت", "ریٹ"],
   list: ["products", "product", "items", "list", "menu", "catalog", "catalogue", "rates", "price list", "kya kya", "services", "kya kuch", "kia kuch", "kuch hai", "kya milta", "kya milega", "kya bechte", "what do you have", "what do you sell", "کیا کچھ", "کیا ملتا", "کیا ملے گا", "کیا بیچتے", "لسٹ", "چیزیں", "ریٹ", "مینو", "پروڈکٹ", "سروس"],
   contact: ["call", "bat", "baat", "rabta", "rabita", "contact", "number", "phone", "whatsapp", "baat", "callback", "person", "human", "agent", "team", "رابطہ", "فون", "نمبر", "کال", "بات"],
-  yes: ["yes", "y", "ok", "okay", "haan", "han", "ha", "ji", "jee", "g", "confirm", "theek", "thik", "done", "ہاں", "جی", "ٹھیک", "کنفرم", "اوکے"],
+  yes: ["yes", "y", "ok", "okay", "haan", "han", "ha", "ji", "jee", "je", "g", "bilkul", "zaroor", "kar do", "kardo", "بالکل", "ضرور", "کر دیں", "کر دو", "confirm", "theek", "thik", "done", "ہاں", "جی", "ٹھیک", "کنفرم", "اوکے"],
   no: ["no", "nahi", "nahin", "na", "cancel", "stop", "chhoro", "rehne", "نہیں", "کینسل", "بس", "رہنے"],
   more: ["aur", "more", "add", "another", "اور", "مزید"],
   already: ["abhi to", "de diya", "de dia", "dia he", "diya hai", "dia hai", "bata diya", "bata dia", "btaya", "bataya", "already", "pehle", "upar", "دے دیا", "دیا ہے", "بتا دیا", "بتایا", "پہلے", "اوپر", "ابھی تو"],
-  howru: ["kese ho", "kaise ho", "kesy ho", "kaisay ho", "kese hain", "kaise hain", "kia haal", "kya haal", "how are you", "how r u", "کیسے ہو", "کیسے ہیں", "کیا حال", "حال کیسا"],
+  howru: ["kese ho", "kaise ho", "kesy ho", "kaisay ho", "kese hain", "kaise hain", "kese hen", "kia haal", "kya haal", "kya hal", "kia hal", "haal hai", "hal hai", "hal he", "haal chaal", "hal chal", "sab theek", "sab thik", "sab khair", "khairiyat", "khariyat", "how are you", "how r u", "how r you", "how are u",
+    "کیسے ہو", "کیسے ہیں", "کیسی ہو", "کیا حال", "حال کیسا", "حال ہے", "حال چال", "خیریت", "سب ٹھیک", "سب خیر"],
   thanks: ["thanks", "thank you", "thx", "shukriya", "shukria", "jazakallah", "شکریہ", "جزاک اللہ", "مہربانی"],
   bargain: ["kam karo", "kam kar", "kam kardo", "kam kr", "discount", "sasta", "sasti", "less price", "final price", "last price", "rate kam", "price kam", "kuch kam", "کم کرو", "کم کر", "کم کریں", "ڈسکاؤنٹ", "رعایت", "سستا", "سستی", "آخری قیمت", "فائنل"],
 };
-const STOP = new Set(["the", "and", "for", "with", "price", "rate", "kitne", "kitna", "ka", "ki", "ke", "hai", "hain", "kya", "of", "is", "what", "how", "much", "me", "mein", "do", "de", "dein", "chahiye", "کا", "کی", "کے", "ہے", "ہیں", "کیا", "میں", "قیمت", "کتنے", "کتنا", "چاہیے",
+const STOP = new Set(["call", "karo", "kro", "kar", "kardo", "baat", "bat", "team", "phone", "number", "order", "list", "rate", "batao", "bata", "bhai", "yar", "yaar", "sir", "the", "and", "for", "with", "price", "rate", "kitne", "kitna", "ka", "ki", "ke", "hai", "hain", "kya", "of", "is", "what", "how", "much", "me", "mein", "do", "de", "dein", "chahiye", "کا", "کی", "کے", "ہے", "ہیں", "کیا", "میں", "قیمت", "کتنے", "کتنا", "چاہیے",
   // everyday Urdu / Roman-Urdu filler words (so "lawn suit mil sakta hai?" only matches on "lawn suit")
   "chahie", "chaiye", "chahye", "lena", "leni", "lene", "dena", "deni", "mil", "mile", "milega", "milegi", "milta", "milti", "sakta", "sakti", "sakte", "ga", "gi", "ge", "hy", "he", "mujhe", "mjhe", "muje", "ap", "aap", "apka", "apke", "wala", "wali", "wale", "koi", "bhi", "hay", "please", "plz", "want", "need", "available", "have", "you", "do", "can", "get",
   "چاہئے", "لینا", "لینی", "لینے", "دینا", "مل", "ملے", "ملے", "ملےگا", "ملیگا", "ملے گا", "ملتا", "ملتی", "سکتا", "سکتی", "سکتے", "گا", "گی", "گے", "مجھے", "آپ", "اپ", "والا", "والی", "والے", "کوئی", "بھی", "ہو", "ہوں", "دستیاب", "ریٹ", "دام"]);
@@ -115,8 +131,12 @@ function matchProduct(text: string, products: BotProduct[]): BotProduct | null {
 }
 
 /** Parse "2 sugar, 1 ghee aur 3 rice" into catalogue items. */
+// "do suit", "teen chawal", "تین چاول" → numbers
+const NUM_WORDS: Record<string, number> = { ek: 1, aik: 1, one: 1, do: 2, two: 2, teen: 3, tin: 3, three: 3, char: 4, chaar: 4, four: 4, panch: 5, paanch: 5, five: 5, che: 6, chay: 6, chhe: 6, six: 6, saat: 7, sat: 7, seven: 7, aath: 8, aat: 8, eight: 8, nau: 9, no: 9, nine: 9, das: 10, dus: 10, ten: 10, darjan: 12, dozen: 12,
+  "ایک": 1, "دو": 2, "تین": 3, "چار": 4, "پانچ": 5, "چھ": 6, "سات": 7, "آٹھ": 8, "نو": 9, "دس": 10, "درجن": 12 };
+const numWordsToDigits = (s: string) => s.replace(/[\p{L}]+/gu, (w) => (NUM_WORDS[w.toLowerCase()] != null && w.toLowerCase() !== "no" ? String(NUM_WORDS[w.toLowerCase()]) : w));
 function parseItems(text: string, products: BotProduct[]): { id: string; qty: number }[] {
-  const parts = normDigits(text).split(/,|،|\+|\band\b|\baur\b|اور|\n/i).map((s) => s.trim()).filter(Boolean);
+  const parts = numWordsToDigits(normDigits(text)).split(/,|،|\+|\band\b|\baur\b|اور|\n/i).map((s) => s.trim()).filter(Boolean);
   const out: { id: string; qty: number }[] = [];
   for (const part of parts) {
     const p = matchProduct(part, products);
@@ -181,11 +201,13 @@ async function basicReplyInner(input: {
 
   // Friendly small talk — answered at any point, and a running order continues afterwards.
   const smallTalk = (): string | null => {
-    if (s.flow && has(message, W.greet) && tokens(message).length <= 4) return /salam|slam|سلام|السلام/i.test(message) ? t(ur, "Wa alaikum assalam!", "وعلیکم السلام!") : t(ur, "Hello!", "جی، سلام!");
+    if (s.flow && has(message, W.greet) && tokens(message).length <= 4) return /salam|slam|aoa|asalam|سلام|السلام/i.test(message) ? t(ur, "Wa alaikum assalam!", "وعلیکم السلام!") : t(ur, "Hello!", "جی، سلام!");
     if (has(message, W.howru)) return t(ur, "I'm fine, thank you for asking! 😊", "میں ٹھیک ہوں، پوچھنے کا شکریہ! 😊");
     if (has(message, W.bargain)) return t(ur, "Our prices are already the best we can offer" + (products.some((p) => p.sale_price != null && p.sale_price < p.price) ? " — sale prices are already applied." : ".") + " For a bigger (bulk) order our team can talk to you — type \"call\".",
       "ہماری قیمتیں پہلے ہی بہترین ہیں" + (products.some((p) => p.sale_price != null && p.sale_price < p.price) ? "، سیل والی قیمت لگی ہوئی ہے۔" : "۔") + " زیادہ مقدار (ہول سیل) کے لیے ہماری ٹیم بات کر سکتی ہے — \"کال\" لکھیں۔");
     if (has(message, W.thanks) && tokens(message).length <= 4) return t(ur, "You're welcome! 🌸", "آپ کا بہت شکریہ! 🌸");
+    if (has(message, W.bye) && tokens(message).length <= 5) return t(ur, "Allah Hafiz! Message us any time you need something. 🌸", "اللہ حافظ! جب بھی کچھ چاہیے ہو، یہیں لکھ دیجیے گا۔ 🌸");
+    if (has(message, W.who) && !has(message, ["baat", "bat", "call", "بات", "کال"]) && tokens(message).length <= 6) return t(ur, `I'm the online assistant of ${b.name}. I can tell you prices and take your order — and our team is here if you want to talk to a person.`, `میں ${b.name} کا آن لائن اسسٹنٹ ہوں۔ قیمت بتا سکتا ہوں اور آرڈر لے سکتا ہوں — اور اگر آپ کسی انسان سے بات کرنا چاہیں تو ہماری ٹیم بھی موجود ہے۔`);
     return null;
   };
   const resume = () => {
@@ -197,7 +219,7 @@ async function basicReplyInner(input: {
   };
   if (s.step !== "address" && s.step !== "number") {
     const st = smallTalk();
-    if (st) { const r = s.flow ? resume() : ""; return { reply: st + (r ? "\n\n" + r : (s.flow ? "" : "\n\n" + t(ur, "How can I help you today?", "بتائیں، میں آپ کی کیا مدد کروں؟"))), state: s }; }
+    if (st) { const r = s.flow ? resume() : ""; return { reply: st + (r ? "\n\n" + r : (s.flow || has(message, W.bye) ? "" : "\n\n" + t(ur, "How can I help you today?", "بتائیں، میں آپ کی کیا مدد کروں؟"))), state: s }; }
   }
 
   const who = input.state.who ?? {};
@@ -218,18 +240,67 @@ async function basicReplyInner(input: {
     return cb;
   }
 
+  /** Common shop questions the owner hasn't written an answer for: answer honestly, never invent details. */
+  const generalAnswer = (): string | null => {
+    const callUs = b.phone ? t(ur, ` You can also call/WhatsApp us at ${b.phone}.`, ` آپ ہمیں ${b.phone} پر کال یا واٹس ایپ بھی کر سکتے ہیں۔`) : "";
+    if (has(message, W.where)) return (b.address ? t(ur, `Our address: ${b.address}.`, `ہمارا پتہ: ${b.address}۔`) + callUs : t(ur, "Our team will share the exact location with you.", "ہماری ٹیم آپ کو جگہ کی پوری تفصیل بتا دے گی۔") + callUs + (callUs ? "" : t(ur, " Type \"talk\" and we'll call you.", " \"بات کرنی ہے\" لکھیں، ہم آپ کو کال کر لیں گے۔")));
+    if (has(message, W.timing)) return (t(ur, "For our exact timings, please ask our team.", "دکان کے اوقات ہماری ٹیم بتا دے گی۔") + (callUs || t(ur, " Type \"talk\" and we'll call you.", " \"بات کرنی ہے\" لکھیں، ہم آپ کو کال کر لیں گے۔")));
+    if (has(message, W.payment)) return (t(ur, "Our team will tell you the payment options when they confirm your order.", "ادائیگی کا طریقہ ہماری ٹیم آرڈر کنفرم کرتے وقت بتا دے گی۔") + callUs);
+    if (has(message, W.delivery)) return (t(ur, "Delivery charges and time are confirmed by our team when they confirm your order." + (s.flow ? "" : " Would you like to order? Type \"order\"."), "ڈلیوری کے چارجز اور وقت ہماری ٹیم آرڈر کنفرم کرتے وقت بتا دے گی۔" + (s.flow ? "" : " کیا آرڈر کرنا چاہیں گے؟ \"آرڈر\" لکھیں۔")) + callUs);
+    return null;
+  };
+
+  /** Begin an order with these items, filling in what the customer already told us. */
+  const startOrder = (items: { id: string; qty: number }[]): { reply: string; state: BotState; voice?: string } => {
+    const out = items.find((i) => { const p = byId.get(i.id)!; return p.kind === "product" && p.stock != null && p.stock < i.qty; });
+    if (out) { const p = byId.get(out.id)!; return { reply: p.stock === 0 ? t(ur, `Sorry, ${p.name} is out of stock right now.`, `معذرت، ${p.name} ابھی ختم ہے۔`) : t(ur, `Sorry, only ${p.stock} of ${p.name} available. How many would you like?`, `معذرت، ${p.name} صرف ${p.stock} دستیاب ہیں۔ کتنے چاہییں؟`), state: { ...s, flow: "order", step: "items" } }; }
+    const c = cartText(items);
+    const o: BotState = { ...(s.lastOrder ? { lastOrder: s.lastOrder } : {}), flow: "order", items, name: who.name, phone: who.phone, address: who.address };
+    o.step = o.name ? (o.phone ? (o.address ? "confirm" : "address") : "phone") : "name";
+    s = o;
+    if (o.step === "confirm") return { reply: confirmText(), state: o };
+    const ask = o.step === "address" ? askAddress() : o.step === "phone" ? t(ur, `${o.name}, your phone number please?`, `${o.name} صاحب، آپ کا فون نمبر؟`) : t(ur, "What is your name?", "آپ کا نام کیا ہے؟");
+    return { reply: c.text + "\n\n" + ask, state: o, voice: o.step === "name" ? "ask_name" : o.step === "phone" ? "ask_phone" : "ask_address" };
+  };
+
+  const looksLikeName = (m: string) => {
+    const tk = tokens(m);
+    return tk.length >= 1 && tk.length <= 4 && !/\d|[?؟]/.test(m) && !matchProduct(m, products) &&
+      ![W.price, W.list, W.order, W.status, W.delivery, W.payment, W.where, W.timing, W.complaint, W.contact, W.want, W.howru, W.greet, W.thanks, W.bargain].some((ws) => has(m, ws));
+  };
+  /** While we wait for a name, the customer asked something else: answer it and ask for the name again. */
+  const notAName = (): { reply: string; state: BotState } => {
+    const p = matchProduct(message, products);
+    const g = generalAnswer();
+    const ans = p ? `${p.name}: ${money(priceOf(p))}` : g ?? t(ur, "Sure.", "جی ضرور۔");
+    return { reply: ans + "\n\n" + t(ur, "To place your order, what is your name?", "آرڈر کے لیے آپ کا نام بتا دیں؟"), state: s };
+  };
+
   // Cancel any running flow
   if (s.flow && has(message, W.no) && tokens(message).length <= 3) {
-    return { reply: t(ur, "No problem, cancelled. ", "ٹھیک ہے، کینسل کر دیا۔ ") + "\n\n" + menu, state: {} };
+    if (s.step === "offer") return { reply: t(ur, "No problem! Let me know if you need anything else.", "کوئی بات نہیں! کچھ اور چاہیے ہو تو بتائیں۔"), state: {} };
+    return { reply: t(ur, "No problem, cancelled. Let me know if you need anything else.", "ٹھیک ہے، کینسل کر دیا۔ کچھ اور چاہیے ہو تو بتائیں۔"), state: {} };
   }
 
   // ------------------------------------------------ running flows
+  if (s.flow === "order" && s.step === "offer") {
+    // We just told them a price and asked "shall I order it?"
+    const items = parseItems(message, products);
+    const bare = numWordsToDigits(normDigits(message)).trim().match(/^(\d{1,4})\b/);
+    if (items.length && (has(message, W.want) || has(message, W.order) || has(message, W.yes) || /\d/.test(numWordsToDigits(normDigits(message))))) return startOrder(items);
+    if (items.length) { s = {}; }
+    else if (bare && s.items?.length) return startOrder([{ id: s.items[0].id, qty: Math.max(1, Number(bare[1])) }]);
+    else if (has(message, W.yes) && s.items?.length) return startOrder(s.items);
+    else s = {}; // something else — handle it as a new question below
+  }
   if (s.flow === "order") {
     if (s.step === "items") {
       const items = parseItems(message, products);
       if (!items.length) {
         const k = bestKnowledge(message, knowledge);
         if (k) return { reply: k.answer + "\n\n" + t(ur, "Which item and how many would you like?", "کون سی چیز اور کتنی چاہیے؟"), state: s, voice: k.id ? `kb:${k.id}` : undefined };
+        const g = generalAnswer();
+        if (g) return { reply: g + "\n\n" + t(ur, "Which item and how many would you like?", "کون سی چیز اور کتنی چاہیے؟"), state: s };
       }
       if (!items.length) return { reply: t(ur, "I couldn't find that item. Please type the item name and quantity, e.g. \"2 ", "یہ چیز نہیں ملی۔ چیز کا نام اور تعداد لکھیں، جیسے \"2 ") + (products[0]?.name ?? "item") + "\".\n\n" + listText(), state: s };
       const merged = (s.items ?? []).map((m) => ({ ...m }));
@@ -244,6 +315,7 @@ async function basicReplyInner(input: {
         voice: s.step === "name" ? "ask_name" : s.step === "phone" ? "ask_phone" : s.step === "address" ? "ask_address" : undefined };
     }
     if (s.step === "name") {
+      if (!looksLikeName(message)) return notAName();
       s.name = message.trim().slice(0, 120); s.step = "phone";
       return { reply: t(ur, `Thanks ${s.name}. Your phone number please?`, `شکریہ ${s.name}۔ آپ کا فون نمبر؟`), state: s, voice: "ask_phone" };
     }
@@ -270,7 +342,7 @@ async function basicReplyInner(input: {
   }
 
   if (s.flow === "lead") {
-    if (s.step === "name") { s.name = message.trim().slice(0, 120); s.step = "phone"; return { reply: t(ur, "Your phone number please?", "آپ کا فون نمبر؟"), state: s, voice: "ask_phone" }; }
+    if (s.step === "name") { if (!looksLikeName(message)) return { reply: t(ur, "Please tell me your name so our team can call you.", "براہِ کرم اپنا نام بتائیں تاکہ ہماری ٹیم آپ کو کال کر سکے۔"), state: s }; s.name = message.trim().slice(0, 120); s.step = "phone"; return { reply: t(ur, "Your phone number please?", "آپ کا فون نمبر؟"), state: s, voice: "ask_phone" }; }
     if (s.step === "phone") {
       if (!phoneOk(message) && !(who.phone && has(message, W.already))) return { reply: t(ur, "Please send a valid phone number.", "براہِ کرم درست فون نمبر لکھیں۔"), state: s };
       s.phone = phoneOk(message) ? cleanPhone(message) : who.phone;
@@ -304,7 +376,7 @@ async function basicReplyInner(input: {
   // ------------------------------------------------ new intents
   const lastOrder = input.state.lastOrder;
   s = lastOrder ? { lastOrder } : {};
-  if (has(message, W.status)) {
+  if (has(message, W.status) || (has(message, W.orderWord) && has(message, W.whenWhere))) {
     const m = normDigits(message).match(/#?\s*(\d{1,7})\b/);
     if (!m && lastOrder && who.phone) {
       const r = await tool("check_order_status", { order_number: lastOrder, phone: who.phone }) as { ok?: boolean; status?: string; total?: string; placed_on?: string };
@@ -313,16 +385,14 @@ async function basicReplyInner(input: {
     if (m && !phoneOk(m[1])) return { reply: t(ur, "Phone number used for the order?", "آرڈر والا فون نمبر؟"), state: { flow: "status", step: "phone", number: Number(m[1]) } };
     return { reply: t(ur, "Please type your order number.", "اپنا آرڈر نمبر لکھیں۔"), state: { flow: "status", step: "number" } };
   }
-  if (has(message, W.order)) {
-    const items = parseItems(message, products);
-    if (items.length) {
-      const c = cartText(items);
-      const o: BotState = { ...s, flow: "order", items, name: who.name, phone: who.phone, address: who.address };
-      o.step = o.name ? (o.phone ? (o.address ? "confirm" : "address") : "phone") : "name";
-      if (o.step === "confirm") { s = o; return { reply: confirmText(), state: o }; }
-      const ask = o.step === "address" ? askAddress() : o.step === "phone" ? t(ur, `${o.name}, your phone number please?`, `${o.name} صاحب، آپ کا فون نمبر؟`) : t(ur, "What is your name?", "آپ کا نام کیا ہے؟");
-      return { reply: c.text + "\n\n" + ask, state: o, voice: o.step === "name" ? "ask_name" : o.step === "phone" ? "ask_phone" : "ask_address" };
-    }
+  if (has(message, W.complaint)) {
+    const r = await callBack("Complaint / problem: " + message.slice(0, 300));
+    return { ...r, reply: t(ur, "We're really sorry about that! ", "ہمیں بہت افسوس ہے! ") + r.reply.replace(/^Sure [^!]*! |^جی [^!]*! /, "") };
+  }
+  const wanted = parseItems(message, products);
+  const hasQty = /\d/.test(numWordsToDigits(normDigits(message)).replace(/0\d{9,}/g, ""));
+  if (has(message, W.order) || (wanted.length && (has(message, W.want) || hasQty || wanted.length > 1))) {
+    if (wanted.length) return startOrder(wanted);
     return { reply: t(ur, "Great! Which items and how many? e.g. \"2 ", "بہت اچھا! کون سی چیزیں اور کتنی؟ جیسے \"2 ") + (products[0]?.name ?? "item") + "\"\n\n" + listText(), state: { ...s, flow: "order", step: "items", name: who.name, phone: who.phone, address: who.address } };
   }
   const kb = bestKnowledge(message, knowledge);
@@ -333,14 +403,18 @@ async function basicReplyInner(input: {
     return {
       reply: `${product.name}: ${money(priceOf(product))}${sale ? t(ur, ` (was ${money(product.price)})`, ` (پہلے ${money(product.price)})`) : ""}` +
         (product.description ? `\n${product.description.slice(0, 400)}` : "") + stock +
-        "\n\n" + t(ur, `To order, type: order 1 ${product.name}`, `آرڈر کے لیے لکھیں: آرڈر 1 ${product.name}`),
-      state: s,
+        "\n\n" + (product.stock === 0 ? t(ur, "Would you like something else?", "کوئی اور چیز دیکھیں گے؟") : t(ur, "Shall I order it for you? Reply \"yes\" or tell me how many.", "کیا آپ کا آرڈر بنا دوں؟ \"جی\" لکھیں یا تعداد بتائیں۔")),
+      state: product.stock === 0 ? s : { ...s, flow: "order", step: "offer", items: [{ id: product.id, qty: 1 }] },
     };
   }
   if (kb) return { reply: kb.answer, state: s, voice: kb.id ? `kb:${kb.id}` : undefined };
+  const general = generalAnswer();
+  if (general) return { reply: general, state: s };
   if (has(message, W.list)) return { reply: listText() + "\n\n" + t(ur, "Type \"order\" to buy.", "خریدنے کے لیے \"آرڈر\" لکھیں۔"), state: s };
   if (has(message, W.contact)) return callBack("Requested a call back");
-  if (has(message, W.greet)) return { reply: (/salam|slam|سلام|السلام/i.test(message) ? t(ur, `Wa alaikum assalam! Welcome to ${b.name}. `, `وعلیکم السلام! ${b.name} میں خوش آمدید۔ `) : t(ur, `Hello! Welcome to ${b.name}. `, `السلام علیکم! ${b.name} میں خوش آمدید۔ `)) + "\n\n" + menu, state: s };
+  if (has(message, W.price) && products.length) return { reply: listText() + "\n\n" + t(ur, "Which item would you like? Type its name.", "آپ کو کون سی چیز چاہیے؟ اس کا نام لکھیں۔"), state: s };
+  if (has(message, W.ack) && tokens(message).length <= 3) return { reply: t(ur, "Sure! Anything else I can help with? You can ask a price or type \"order\".", "جی! اور کچھ چاہیے؟ کسی چیز کی قیمت پوچھیں یا \"آرڈر\" لکھیں۔"), state: s };
+  if (has(message, W.greet)) return { reply: (/salam|slam|aoa|asalam|سلام|السلام/i.test(message) ? t(ur, `Wa alaikum assalam! Welcome to ${b.name}. `, `وعلیکم السلام! ${b.name} میں خوش آمدید۔ `) : t(ur, `Hello! Welcome to ${b.name}. `, `السلام علیکم! ${b.name} میں خوش آمدید۔ `)) + t(ur, "How can I help you? Ask the price of anything or type \"order\".", "بتائیں، میں آپ کی کیا مدد کروں؟ کسی چیز کی قیمت پوچھیں یا \"آرڈر\" لکھیں۔"), state: s };
   // Not understood: answer like a salesman — show what we sell instead of a robotic menu.
   if (products.length) {
     const top = products.slice(0, 6).map((p) => `• ${p.name} — ${money(priceOf(p))}`).join("\n");

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Mic, MicOff, PhoneOff, RotateCcw, Volume2 } from "lucide-react";
-import { checkMic, hasVoiceFor, listenOnce, playUrl, speak, voiceSupport, type CallLang } from "../lib/voice";
+import { callVoiceInfo, checkMic, hasVoiceFor, listenOnce, playUrl, speak, voiceSupport, type CallLang } from "../lib/voice";
 import { isRtl } from "../lib/format";
 import { BRAND } from "../lib/brand";
 
@@ -73,15 +73,49 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
     return text;
   }
 
-  async function say(text: string, url?: string | null) {
+  // Barge-in: while the bot talks we keep listening, and if the customer starts speaking the bot stops — like a real phone call.
+  // Phones play a beep every time listening restarts, so barge-in is used on computers only.
+  const canBargeIn = typeof navigator !== "undefined" && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const plain = (t: string) => t.toLowerCase().replace(/[\u064B-\u0652\u0670]/g, "").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 1);
+
+  /** Speak a reply. Returns what the customer said if they interrupted, otherwise "". */
+  async function say(text: string, url?: string | null): Promise<string> {
     text = forCall(text);
     setActivity("speaking"); setCaption(text);
-    const replyLang: CallLang = isRtl(text) ? "ur-PK" : "en-US";
+    // One voice for the whole call: the call's language decides it (the Urdu voice also reads English names and prices).
+    const voiceLang: CallLang = langRef.current;
     if (!url && premiumSpeak) url = await premiumSpeak(text).catch(() => null);
-    if (!active.current) return;
-    if (url) { const p = playUrl(url); stopper.current = p.stop; await p.promise; }
-    else if (hasVoiceFor(replyLang)) { const s = speak(text, replyLang, rate, pitch); stopper.current = s.stop; await s.promise; }
-    else await sleep(Math.min(8000, 1200 + text.length * 45)); // no voice installed: time to read the caption
+    if (!active.current) return "";
+    let speech: { promise: Promise<void>; stop: () => void };
+    if (url) speech = playUrl(url);
+    else if (hasVoiceFor(voiceLang)) speech = speak(text, voiceLang, rate, pitch);
+    else speech = { promise: sleep(Math.min(8000, 1200 + text.length * 45)).then(() => undefined), stop: () => {} }; // no voice installed: time to read the caption
+    stopper.current = speech.stop;
+    if (!canBargeIn || mutedRef.current) { await speech.promise; return ""; }
+
+    // Listen at the same time. Words the bot itself is saying (echo from the speakers) are ignored.
+    const own = new Set(plain(text));
+    const isEcho = (heard: string) => { const fresh = plain(heard).filter((w) => !own.has(w)); return fresh.length < 2; };
+    let speaking = true, interrupted = false, lastHeard = "", stopListen = () => {};
+    const started = Date.now();
+    const done = speech.promise.then(() => { speaking = false; if (!interrupted) stopListen(); });
+    const heard = (async () => {
+      while (speaking && active.current && !interrupted) {
+        const l = listenOnce(voiceLang, (partial) => {
+          lastHeard = partial;
+          if (!interrupted && Date.now() - started > 700 && !isEcho(partial)) {
+            interrupted = true; speech.stop(); setActivity("listening"); setCaption(partial);
+          } else if (interrupted) setCaption(partial);
+        });
+        stopListen = l.stop;
+        const t = await l.promise.catch(() => "");
+        if (interrupted) return (t || lastHeard).trim();
+      }
+      return "";
+    })();
+    await done;
+    const result = await Promise.race([heard, sleep(interrupted ? 15000 : 300).then(() => "")]);
+    return interrupted ? result || lastHeard : "";
   }
 
   function finish() {
@@ -100,15 +134,16 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
     return "مائیک شروع نہیں ہو سکا۔ Google Chrome یا Microsoft Edge میں کھول کر دوبارہ کوشش کریں۔\nThe microphone could not start — please use Chrome or Edge and try again.";
   }
 
-  async function conversation() {
+  async function conversation(first = "") {
     if (looping.current) return;
     looping.current = true;
     try {
+      let pending = first;
       while (active.current) {
         if (mutedRef.current) { setActivity("muted"); await sleep(400); continue; }
-        setActivity("listening"); setCaption("");
-        let text = "";
-        try {
+        let text = pending; pending = "";
+        if (!text) { setActivity("listening"); setCaption(""); }
+        if (!text) try {
           const l = listenOnce(langRef.current, (t) => setCaption(t)); stopper.current = l.stop;
           text = await l.promise;
         } catch (e) {
@@ -121,8 +156,8 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
         setActivity("thinking");
         const [reply] = await Promise.all([sendRef.current(text), sleep(400 + Math.random() * 400)]); // a natural pause before answering
         if (!active.current) return;
-        if (!reply) { await say(langRef.current === "ur-PK" ? "معاف کیجیے، آواز صاف نہیں آئی، دوبارہ بتائیں؟" : "Sorry, I didn't catch that. Could you say it again?"); continue; }
-        await say(reply.text, reply.voiceUrl);
+        if (!reply) { pending = await say(langRef.current === "ur-PK" ? "معاف کیجیے، آواز صاف نہیں آئی، دوبارہ بتائیں؟" : "Sorry, I didn't catch that. Could you say it again?"); continue; }
+        pending = await say(reply.text, reply.voiceUrl);
         if (reply.human) { finish(); return; }
       }
     } finally { looping.current = false; }
@@ -149,15 +184,16 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
       const spokenGreeting = greetingUrl ? greeting : langRef.current === "ur-PK"
         ? `السلام علیکم! ${businessName} میں خوش آمدید۔ آپ کیسے ہیں؟ بتائیے، میں آپ کی کیا خدمت کر سکتا ہوں؟`
         : `Hello, and welcome to ${businessName}! How are you? How can I help you today?`;
-      await say(spokenGreeting, greetingUrl);
+      const early = await say(spokenGreeting, greetingUrl);
       if (!active.current) return;
       if (err) { setProblem(micProblem(err)); setActivity("muted"); return; }
-      await conversation();
+      await conversation(early);
     })();
     return () => { active.current = false; stopper.current(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const voice = callVoiceInfo(lang);
   const initials = businessName.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const activityText = problem ? "" : { speaking: "Speaking", listening: "Listening…", thinking: "…", muted: "You are muted" }[activity];
 
@@ -196,6 +232,9 @@ export default function VoiceCall({ color, botName, businessName, greeting, gree
         </div>
         <div className="mt-1 text-sm text-white/70">{phase === "connected" ? activityText : ""}</div>
         <div className="urdu-aware mt-4 max-h-32 max-w-sm overflow-y-auto text-center text-base text-white/90" dir={isRtl(caption) ? "rtl" : "ltr"}>{caption}</div>
+        {phase === "connected" && !problem && lang === "ur-PK" && voice && !voice.male && (
+          <div className="mt-3 max-w-xs text-center text-[11px] text-white/45">مردانہ اردو آواز کے لیے یہ صفحہ Microsoft Edge میں کھولیں</div>
+        )}
         {problem && (
           <div className="mt-3 flex max-w-sm flex-col items-center gap-3">
             <div className="urdu-aware whitespace-pre-line rounded-lg bg-red-500/25 px-3 py-2 text-center text-sm">{problem}</div>

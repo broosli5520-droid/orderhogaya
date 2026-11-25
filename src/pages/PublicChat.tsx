@@ -216,10 +216,13 @@ function Bubble({ role, content, color }: { role: ChatMsg["role"]; content: stri
     <div className={cx("flex", mine ? "justify-end" : "justify-start")}>
       {role === "agent" && <span className="mr-1 self-end text-[10px] text-slate-400">Team</span>}
       <div dir={rtl ? "rtl" : "ltr"} lang={rtl ? "ur" : undefined}
-        className={cx("max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-2.5 text-sm shadow-sm",
+        className={cx("max-w-[85%] whitespace-pre-wrap break-words [unicode-bidi:plaintext] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
           mine ? "rounded-br-sm text-white" : role === "agent" ? "rounded-bl-sm border border-amber-200 bg-amber-50 text-slate-800" : "rounded-bl-sm bg-white text-slate-800")}
         style={mine ? { background: color } : undefined}>
-        {content}
+        {/* Each line gets its own direction, so an English line inside an Urdu message reads correctly. */}
+        {content.split("\n").map((line, i) => (
+          <div key={i} dir={line.trim() ? (isRtl(line) ? "rtl" : "ltr") : undefined} className={line.trim() ? (isRtl(line) ? "text-right" : "text-left") : "h-2"}>{line}</div>
+        ))}
       </div>
     </div>
   );
